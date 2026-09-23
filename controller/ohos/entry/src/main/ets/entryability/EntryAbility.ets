@@ -1,25 +1,23 @@
-
 import { FlutterAbility, FlutterEngine } from '@ohos/flutter_ohos';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
-import { HomeGameChannel } from '../plugins/HomeGameChannel';
+import { UdpChannel } from '../plugins/UdpChannel';
+import { SensorChannel } from '../plugins/SensorChannel';
 
 export default class EntryAbility extends FlutterAbility {
-  private homeGameChannel: HomeGameChannel | null = null;
+  private udpChannel: UdpChannel = new UdpChannel();
+  private sensorChannel: SensorChannel = new SensorChannel();
 
   configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
     GeneratedPluginRegistrant.registerWith(flutterEngine)
-
-    // HomeGame 自己的两个通道（UDP + 传感器）。
-    // 注册点与安卓侧 MainActivity.configureFlutterEngine 对应。
-    this.homeGameChannel = new HomeGameChannel();
-    this.homeGameChannel.registerWith(flutterEngine);
+    const messenger = flutterEngine.dartExecutor.getBinaryMessenger();
+    this.udpChannel.attach(messenger);
+    this.sensorChannel.attach(messenger);
   }
 
-  onDestroy(): void {
-    // 释放 socket 与传感器监听。
-    this.homeGameChannel?.dispose();
-    this.homeGameChannel = null;
+  onDestroy() {
+    this.udpChannel.detach();
+    this.sensorChannel.detach();
     super.onDestroy();
   }
 }

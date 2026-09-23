@@ -63,6 +63,10 @@ class MainActivity : FlutterActivity() {
     @Volatile private var haveAccel = false
     @Volatile private var haveGyro = false
 
+    // 最近一次传感器事件的时间戳（纳秒，boot 起算）。emit 时用它转毫秒，
+    // 与鸿蒙侧（sensor.timestamp / 1_000_000）同一时间基准，保证两端 Dart 一份代码通吃。
+    @Volatile private var latestSensorTs = 0L
+
     // 当前屏幕旋转角（0/90/180/270）。协议是竖屏语义，横拿手机要映射，
     // 否则「往左倾」会变「往前倾」，手感废掉。由 DisplayManager 监听变化更新。
     @Volatile private var rotation = 0
@@ -205,6 +209,8 @@ class MainActivity : FlutterActivity() {
         if (sensorListener == null) {
             sensorListener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
+                    // 记录时间戳（纳秒，boot 起算），emit 时再转毫秒 —— 与鸿蒙侧同源。
+                    latestSensorTs = event.timestamp
                     when (event.sensor.type) {
                         Sensor.TYPE_ACCELEROMETER -> {
                             latest[0] = event.values[0]
@@ -221,7 +227,8 @@ class MainActivity : FlutterActivity() {
                     }
                     // 两个传感器都至少到过一次再往上推，避免前半段是 0 的脏数据。
                     if (haveAccel && haveGyro) {
-                        val ts = SystemClock.elapsedRealtime()
+                        // 纳秒 → 毫秒（与鸿蒙侧 sensor.timestamp / 1_000_000 一致）。
+                        val ts = latestSensorTs / 1_000_000L
                         sensorSink?.success(
                             mapOf(
                                 "gx" to latest[3],
