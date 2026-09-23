@@ -7,6 +7,9 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.SystemClock
+import android.view.Display
+import android.view.DisplayManager
+import android.view.Surface
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -32,6 +35,22 @@ class MainActivity : FlutterActivity() {
     // 60Hz 高频 send，用一个单线程池串行化发送，避免多线程抢 socket。
     private val sendExecutor = Executors.newSingleThreadExecutor()
 
+    // 大屏地址缓存。InetAddress.getByName() 是阻塞的且每次都要解析，
+    // 60Hz 下不能每包都调 —— host 变了才重新解析。只在 sendExecutor 线程里读写，
+    // 但 close()/open() 也在主线程碰它，所以用 @Volatile 保证可见性。
+    @Volatile private var cachedHost: String? = null
+    @Volatile private var cachedAddr: InetAddress? = null
+
+    /** 解析并缓存 host。只在发送线程调用。 */
+    private fun resolveCached(host: String): InetAddress {
+        val c = cachedAddr
+        if (c != null && cachedHost == host) return c
+        val addr = InetAddress.getByName(host)
+        cachedHost = host
+        cachedAddr = addr
+        return addr
+    }
+
     // 传感器相关。
     private var sensorManager: SensorManager? = null
     private var sensorListener: SensorEventListener? = null
@@ -43,6 +62,37 @@ class MainActivity : FlutterActivity() {
     private val latest = FloatArray(6) // [ax, ay, az, gx, gy, gz]
     @Volatile private var haveAccel = false
     @Volatile private var haveGyro = false
+
+    // 当前屏幕旋转角（0/90/180/270）。协议是竖屏语义，横拿手机要映射，
+    // 否则「往左倾」会变「往前倾」，手感废掉。由 DisplayManager 监听变化更新。
+    @Volatile private var rotation = 0
+    private var displayManager: DisplayManager? = null
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {
+            rotation = currentRotation()
+        }
+
+        override fun onDisplayRemoved(displayId: Int) {
+            // 忽略
+        }
+
+        override fun onDisplayChanged(displayId: Int) {
+            rotation = currentRotation()
+        }
+    }
+
+    // minSdk = 24，Activity.display（API 17+）可用且非 deprecated，
+    // 比 windowManager.defaultDisplay（API 30 deprecated）更干净。
+    private fun currentRotation(): Int {
+        val r = display?.rotation ?: Surface.ROTATION_0
+        return when (r) {
+            Surface.ROTATION_0 -> 0
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -104,7 +154,11 @@ class MainActivity : FlutterActivity() {
                     ok = false
                     err = "socket 未打开，请先调用 open()"
                 } else {
-                    val packet = DatagramPacket(bytes, bytes.size, InetAddress.getByName(host), port)
+                    // ⚠️ 地址必须缓存。InetAddress.getByName() 每次都会走名字解析路径，
+                    // 而且是**阻塞**的 —— 60Hz 下每包都解析一遍会拖垮发送线程池。
+                    // host 字符串变了才重新解析。
+                    val addr = resolveCached(host)
+                    val packet = DatagramPacket(bytes, bytes.size, addr, port)
                     s.send(packet)
                     ok = true
                     err = null
@@ -142,6 +196,12 @@ class MainActivity : FlutterActivity() {
         if (gyroSensor == null) {
             gyroSensor = sensorManager!!.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         }
+        if (displayManager == null) {
+            displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        }
+        // 初始读一次当前旋转角，再监听后续变化（横竖屏切换）。
+        rotation = currentRotation()
+        displayManager?.registerDisplayListener(displayListener, null)
         if (sensorListener == null) {
             sensorListener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
@@ -171,6 +231,7 @@ class MainActivity : FlutterActivity() {
                                 "ay" to latest[1],
                                 "az" to latest[2],
                                 "ts" to ts,
+                                "rot" to rotation,
                             )
                         )
                     }
@@ -192,6 +253,7 @@ class MainActivity : FlutterActivity() {
 
     private fun stopSensors() {
         sensorListener?.let { sensorManager?.unregisterListener(it) }
+        displayManager?.unregisterDisplayListener(displayListener)
     }
 
     override fun onDestroy() {

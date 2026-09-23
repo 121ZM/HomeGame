@@ -34,7 +34,14 @@
       }
     ],
     "requestPermissions": [
+      // 发 UDP 包到大屏
       {"name" :  "ohos.permission.INTERNET"},
+      // 读网络状态（界面要显示「网络不稳」时用）
+      {"name" :  "ohos.permission.GET_NETWORK_INFO"},
+      // 下面两个是 system_grant（安装即授权、不弹窗），用于读体感输入。
+      // ⚠️ 上架华为应用市场前必须接隐私政策弹窗，且不能在用户同意前开始读传感器。
+      {"name" :  "ohos.permission.ACCELEROMETER"},
+      {"name" :  "ohos.permission.GYROSCOPE"}
     ]
   }
 }
