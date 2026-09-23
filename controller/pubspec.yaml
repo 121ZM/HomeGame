@@ -1,0 +1,33 @@
+name: homegame_controller
+description: "HomeGame 手机体感手柄 —— 安卓 / 鸿蒙双端，把手机变成大屏游戏的体感控制器。"
+publish_to: "none"
+
+# 版本号三段：<大屏协议版本>.<手机端功能迭代>.<构建号>
+# 第 1 段跟 `docs/controller-protocol.md` 的协议版本对齐 —— 协议一改，这里必须跟着动，
+# 手机设置页会把它显示给用户，出问题时一句话就能确认两端是否同一代。
+version: 2.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 传感器：安卓用 SensorManager、鸿蒙用 @ohos.sensor，由这两套插件各自桥接。
+  sensors_plus: ^6.1.1
+
+  # 屏幕常亮（玩的时候不能灭屏）
+  wakelock_plus: ^1.2.8
+
+  # UDP 只走自写平台通道，不用插件 —— 见 lib/transport/udp_channel.dart。
+  # 原因：鸿蒙 OHOS 生态里没有可用的 UDP 插件，且协议字节必须完全可控（小端），
+  # 交给第三方插件反而要再验一遍字节序。
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

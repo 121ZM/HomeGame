@@ -1,0 +1,8 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # 协议字节操作大量用魔数偏移，允许说明性注释代替常量化
+    avoid_print: false
+    # 平台通道回调签名固定，参数不能改名
+    avoid_positional_boolean_parameters: false

@@ -6,8 +6,56 @@
 手机端必须**原生 App**：Android Chrome / iOS Safari 只在 HTTPS 安全上下文开放网页传感器权限。
 
 ## 目录约定
-- `screen/` 大屏端 Godot 项目（主）｜`controller/` 手机端 App（第二阶段，当前为空）
+- `screen/` 大屏端 Godot 项目（主）｜`controller/` 手机端 Flutter App｜`docs/` `tools/` 共享
 - 两者必须**平级** —— Godot 项目不能嵌套，父项目会把子目录当资源扫描。
+- `tools/`（仓库根）放**跨端共用**的脚本（如 `proto_check.py`）；
+  `controller/tools/` 放手机端自己的（如 SDK 安装脚本）。
+
+## 手机端（controller/）：Flutter 双端
+- **技术选型：Flutter**，一套 Dart 代码出**安卓 + 鸿蒙 NEXT**两端。
+- **必须用鸿蒙适配版 Flutter**：纯血鸿蒙 NEXT（5.0+）**不兼容 APK**，只能装 `.hap`；
+  官方 Flutter 产不出 `.hap`。SDK 在 `~/DEV/flutter-ohos`（`oh-3.35.7-release`，Dart 3.9.2）。
+  官方已 3.47.x，适配线在 3.35.x（落后约 4 个月）——双端必须接受。
+  安装脚本 `controller/tools/setup_flutter_ohos.sh`（**幂等可重跑**）。
+- 包名 `cn.zm.homegame.controller`，pubspec name `homegame_controller`。
+- **平台差异全部收敛在原生侧**：Dart 业务层只有一份，两个平台走同名通道。
+  - MethodChannel `cn.zm.homegame/udp` —— `open({port})` / `send({host,port,bytes})` / `close()`
+  - EventChannel `cn.zm.homegame/sensor` —— 每帧推 `{gx,gy,gz,ax,ay,az,ts}`
+- **验证方式：`flutter test`，不需要真机、不需要大屏、不需要鸿蒙 SDK。**
+  `flutter analyze` 必须干净；测试 15 组（10 协议字节 + 5 界面），改代码后必跑。
+- 分工边界：`lib/` 是 Dart 业务（我写），`android/` `ohos/` 是原生（各一个 worker 写）。
+
+### 三个必须记住的环境坑
+1. **归档下载地址全是 HTML** —— atomgit/gitcode 的 `archive/*.tar.gz` / `releases/download/*`
+   / `api/v5/*/tarball` 都返回网页或 401/404。**唯一可靠路径是 `git clone --branch <分支>`**。
+2. **浅克隆 → 版本号变 `0.0.0-unknown` → `pub get` 报假依赖冲突**
+   （看着像 `flutter_test requires Flutter >=3.18.0`，其实是版本没解析）。
+   修：`git tag <版本>` + 删 `bin/cache/flutter_tools.stamp` 重算。
+3. **`flutter test` 会静默不跑** —— 只打一行 `[!] No Hmos SDK found.` 就退，
+   **没有任何测试输出**，极易误判成「通过」。根因在
+   `flutter_tools/lib/src/project.dart` 的 `ensureReadyForPlatformSpecificTooling()`：
+   `hvigor.updateLocalProperties()` 的 `requireHarmonySdk` 默认 true，没鸿蒙 SDK 就 `throwToolExit`。
+   **已给 SDK 源码打补丁**改成 `false`（编 hap 的路径另有检查，不受影响）。
+   ⚠️ **升级 SDK 会覆盖补丁，重装必须重跑 setup 脚本。**
+- 环境变量（每次开 shell 都要，建议写进 shell 配置）：
+  `PUB_HOSTED_URL=https://pub.flutter-io.cn`、`FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`、
+  `FLUTTER_GIT_URL=https://gitcode.com/openharmony-tpc/flutter_flutter.git`（不设会一直唠叨非标准 remote）。
+- 华为的 OHOS 引擎包走**专用源** `flutter-ohos.obs.cn-south-1.myhuaweicloud.com`，不是官方 storage。
+- `flutter doctor` 里 HarmonyOS / Android toolchain **必然是 ✗**（没装 DevEco / Android SDK），
+  **不影响纯 Dart 单测**。
+- ⚠️ **`flutter create` 会覆盖 `lib/main.dart`** —— 已有代码先备份再 create。
+
+### 鸿蒙侧要点（待 DevEco 才能编）
+- 传感器 `@ohos.sensor`（`ACCELEROMETER`/`GYROSCOPE`，`{interval: 20000}` 纳秒 ≈ 50Hz）；
+  UDP `@ohos.net.socket` 的 `constructUDPSocketInstance()`
+- 权限 `ohos.permission.INTERNET` / `ACCELEROMETER` / `GYROSCOPE`
+  （后两个 `system_grant`，**安装即授权不弹窗**）
+- **隐私合规**：不能在用户同意隐私政策前读传感器（上架华为市场会查）
+- ArkTS 比 TS 严：不能用 `any`
+
+### 安卓侧要点
+- 传感器 `SensorManager` + `TYPE_ACCELEROMETER`/`TYPE_GYROSCOPE`，`SENSOR_DELAY_GAME`
+- UDP `java.net.DatagramSocket`；权限 `INTERNET` / `VIBRATE` / `HIGH_SAMPLING_RATE_SENSORS`
 
 ## 架构：三层 + 框架层
 1. **网络层** `screen/scripts/net/` —— 只管收包/会话/链路质量，不解释语义
@@ -175,6 +223,17 @@ func reward_catalog() / pending_reward_request() / begin_reward(req) / apply_rew
   别轻易加回 —— 倾斜一旦有收益，「歪着拿住不动」就是最优解，蹦就废了。
 
 ## 环境与操作
+- **版本管理**：`https://github.com/121ZM/HomeGame.git`（**私有**，整个 HomeGame 一个仓库，
+  `screen/` + `controller/` + `docs/` + `tools/` 全在内）。分支 `main`。
+  **走 SSH 不用 HTTPS**（HTTPS 要 PAT，他没配凭据助手）：
+  - 密钥用 **`~/.ssh/zm.pem`**（RSA 2048，早已注册在 GitHub，测试返回
+    `Hi 121ZM! You've successfully authenticated`）。**别用别的新生成 ed25519** ——
+    他 keyring 里那把（`SSH_AUTH_SOCK=/run/user/1000/gcr/ssh`，GNOME Keyring 代管）
+    **没在 GitHub 注册**，会 `Permission denied (publickey)`。
+  - `~/.ssh/config` 有 `Host github.com` → `IdentityFile ~/.ssh/zm.pem` + `IdentitiesOnly yes`。
+  - `.gitignore` 忽略 `screen/.godot/`（2.6MB 引擎缓存，clone 后 `--import` 重建）；
+    **`.uid` 文件保留入库**（Godot 4.4+ 靠它稳定引用脚本）。
+  - `screen/addons/godot_ai/`（第三方插件）**入库**了，293 文件占入库文件一半多。
 - Godot 4.7.2 标准版 `~/DEV/godot-4.7.2-stable/`，启动器 `~/.local/bin/godot`
 - **新建/克隆项目第一件事**：`godot --headless --path <项目> --import`。
   只跑 `--quit` 不生成 `.godot/`，全局 `class_name` 会全部解析失败

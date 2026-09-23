@@ -1,0 +1,33 @@
+# 归档的构建产物
+.dart_tool/
+.packages
+build/
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE 配置（每人不同，不进仓库）
+.idea/
+.vscode/
+
+# 平台工程里的本地产物（Android / 鸿蒙）
+android/.gradle/
+android/local.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+ohos/build/
+ohos/.hvigor/
+ohos/oh_modules/
+ohos/local.properties
+ohos/entry/build/
+ohos/entry/.preview/
+
+# 签名文件 —— 绝不能进仓库
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.cer
+**/*.p7b
+ohos/**/signature/
+android/key.properties
