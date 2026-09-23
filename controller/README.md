@@ -134,3 +134,37 @@ cn.zm.homegame/udp
 2. **坐标轴** —— 协议要求加速度 **y 向上为正、静止竖持 ≈ +9.81**。
    安卓 / 鸿蒙原生读数都已经符合，**不要自作聪明加负号**。
    真机第一件事是看诊断页：显示 `ay ≈ +9.81` 才对。显示 `-9.81` 才需要翻。
+
+### 通道契约
+
+两端**必须**与 Dart 侧完全一致 —— Dart 只有一份代码，不一致就要在真机联调时排查半天。
+
+| 通道 | 类型 | 方法 / 字段 |
+|---|---|---|
+| `cn.zm.homegame/udp` | MethodChannel | `open({port})` / `send({host, port, bytes})` / `close()` |
+| `cn.zm.homegame/sensor` | EventChannel | 推 `{gx, gy, gz, ax, ay, az, ts, rot}` |
+
+返回值一律是 `{ok: bool, error: String?}` —— **失败也走 `success`，不抛异常**
+（Dart 侧把发送失败当正常路径，降级成计数器；抛异常会打断 60Hz 主循环）。
+
+传感器字段约定：
+
+| 字段 | 单位 | 说明 |
+|---|---|---|
+| `gx/gy/gz` | rad/s | 角速度 |
+| `ax/ay/az` | m/s² | 含重力，**y 向上为正** |
+| `ts` | ms | 传感器硬件时间戳（两端统一：纳秒 ÷ 1e6） |
+| `rot` | 度 | 屏幕旋转角，0/90/180/270。缺省按 0 处理 |
+
+### ⚠️ 鸿蒙 ArkTS 的写法（写错就编不过）
+
+这几条都不能靠读文档猜，是实测校正过的（详见全局 skill `flutter-ohos-harmonyos-setup`）：
+
+| 坑 | 错误写法 | 正确写法 |
+|---|---|---|
+| BinaryMessenger 是私有字段 | `engine.dartExecutor.binaryMessenger` | `engine.dartExecutor.getBinaryMessenger()` |
+| `argument()` 不是泛型 | `call.argument<number>('port')` | `call.argument('port') as number` |
+| UDP data 要 ArrayBuffer | `udp.send({data: uint8})` | `udp.send({data: uint8.buffer})` |
+| UDP address 是一个对象 | `{data, address: host, port}` | `{data, address: {address: host, port}}` |
+| `display.on('change')` 回调参数 | `(d: display.Display) => d.rotation` | `(displayId: number) => /* 重新取 Display */` |
+| `Display.rotation` 是枚举 | `d.rotation * 90` | `switch` 显式映射 |
