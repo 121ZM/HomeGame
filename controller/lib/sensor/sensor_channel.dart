@@ -42,6 +42,14 @@ class SensorChannel implements SensorSource {
   /// 真机诊断页若显示静止 `ay ≈ -9.81`，再把它改成 true。
   static const bool flipY = false;
 
+  /// 当前屏幕旋转角（0/90/180/270）。由原生侧随每帧推上来。
+  ///
+  /// 需要它的原因：协议约定的是**竖屏语义**，而原生给的是设备坐标。
+  /// 玩家横着拿手机时若不做映射，「往左倾」会变成「往前倾」。
+  /// 原生侧在每帧里带 `rot` 字段，这里读出来交给 [SensorNormalizer.fromNative]。
+  int _rotation = 0;
+  int get rotation => _rotation;
+
   @override
   bool get isRunning => _running;
 
@@ -100,6 +108,9 @@ class SensorChannel implements SensorSource {
       return 0;
     }
 
+    final rot = i('rot');
+    if (rot != 0) _rotation = rot;
+
     final sample = SensorNormalizer.fromNative(
       gx: d('gx'),
       gy: d('gy'),
@@ -109,6 +120,7 @@ class SensorChannel implements SensorSource {
       az: d('az'),
       timestampMs: i('ts'),
       flipY: flipY,
+      rotation: _rotation,
     );
     if (!_ctl.isClosed) _ctl.add(sample);
   }

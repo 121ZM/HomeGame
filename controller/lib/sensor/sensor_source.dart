@@ -67,6 +67,8 @@ class SensorNormalizer {
   /// 原生读数 → 协议量。
   ///
   /// [inG] 为 true 时把加速度乘以 [g]（有些平台默认给 g，尤其第三方插件）。
+  /// [flipY] 某端原生轴定义与协议不符时打开，默认关。
+  /// [rotation] 屏幕旋转角（0/90/180/270 度），用于把「屏幕坐标」转回「设备坐标」。
   static SensorSample fromNative({
     required double gx,
     required double gy,
@@ -77,15 +79,49 @@ class SensorNormalizer {
     required int timestampMs,
     bool inG = false,
     bool flipY = false,
+    int rotation = 0,
   }) {
     final k = inG ? g : 1.0;
+
+    // 先把设备坐标转成「屏幕坐标」—— 玩家是拿着手机看屏幕的，
+    // 他感知的「左右」「上下」跟着屏幕走，不是跟着手机外壳走。
+    //
+    // 协议约定的是**竖屏（rotation=0）下的设备坐标**。横屏时原生给的轴
+    // 仍然是设备坐标，如果直接用，玩家把手机转 90° 后「往左倾」会变成
+    // 「往前倾」—— 手感直接废掉。
+    //
+    // 所以按旋转角做一次二维旋转，把读数映射回竖屏语义。
+    // 规则（顺时针旋转屏幕 → 需要逆时针转回读数）：
+    //   rotation=0   → (x, y) 不变
+    //   rotation=90  → (x', y') = (-y,  x)   横屏，手机右转
+    //   rotation=180 → (x', y') = (-x, -y)   倒置
+    //   rotation=270 → (x', y') = ( y, -x)   横屏，手机左转
+    double rx, ry;
+    switch (rotation % 360) {
+      case 90:
+        rx = -ay * k;
+        ry = ax * k;
+        break;
+      case 180:
+        rx = -ax * k;
+        ry = -ay * k;
+        break;
+      case 270:
+        rx = ay * k;
+        ry = -ax * k;
+        break;
+      default: // 0
+        rx = ax * k;
+        ry = ay * k;
+    }
+
     return SensorSample(
       gx: gx,
       gy: gy,
       gz: gz,
-      ax: ax * k,
+      ax: rx,
       // flipY 默认关 —— 安卓/鸿蒙原生都已符合协议。留着是给未来某端轴变了兜底。
-      ay: flipY ? -ay * k : ay * k,
+      ay: flipY ? -ry : ry,
       az: az * k,
       timestampMs: timestampMs,
     );
