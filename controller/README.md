@@ -97,14 +97,19 @@ flutter test          # 纯 Dart，不需要真机 / 不需要大屏 / 不需要
 
 - 传感器：`SensorManager` + `TYPE_ACCELEROMETER` / `TYPE_GYROSCOPE`，
   采样率 `SENSOR_DELAY_GAME`（约 50–100Hz）
-- UDP：`DatagramSocket`（发送不需要权限；要收才需要 INTERNET）
-- 权限：`INTERNET`（发送用 UDP 其实不必，但加上无害）、`VIBRATE`
+- UDP：`java.net.DatagramSocket`
+- 权限：`INTERNET`、`VIBRATE`、
+  `HIGH_SAMPLING_RATE_SENSORS`（Android 12+ 要 >200Hz 采样时需要）
 
 ### 鸿蒙（`ohos/`）
 
 - 传感器：`@ohos.sensor`，`ACCELEROMETER` / `GYROSCOPE`，
-  `SENSOR_DELAY_GAME`（20000ns）。这两个权限属 `system_grant`，**安装即授权、不弹窗**
-- UDP：`@ohos.net.socket` 的 `UDPSocket`
+  `sensor.on(id, cb, {interval: 20000000})` —— ⚠️ interval 单位是**纳秒**，
+  `20000000ns = 20ms = 50Hz`（对齐安卓的 `SENSOR_DELAY_GAME`）。
+  想 60Hz 用 `16666667`。**别写成 `20000`** —— 那是 50kHz，白耗电。
+- UDP：`@ohos.net.socket` 的 `constructUDPSocketInstance()`
+- 权限：`ohos.permission.INTERNET`、`ohos.permission.ACCELEROMETER`、
+  `ohos.permission.GYROSCOPE` —— 后两个属 `system_grant`，**安装即授权、不弹窗**
 - 权限：`ohos.permission.INTERNET`、`ohos.permission.ACCELEROMETER`、
   `ohos.permission.GYROSCOPE`（后两个 system_grant）
 - 隐私合规：**不能在用户同意隐私政策前读传感器**（上架华为应用市场会查）
