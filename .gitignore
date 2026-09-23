@@ -1,0 +1,19 @@
+# ---- Godot 4 ----
+# 引擎导入缓存与编辑器状态：机器相关、体积大，不入库（clone 后跑一次 --import 即可重建）
+screen/.godot/
+# 导出产物
+screen/export/
+*.translation
+# Godot 生成的 .uid 随脚本走，需要入库（Godot 4.4+ 用它稳定引用），因此不忽略
+
+# ---- 编辑器/系统 ----
+.DS_Store
+Thumbs.db
+*~
+*.swp
+
+# ---- Python（tools/ 下的辅助脚本）----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
